@@ -1219,6 +1219,39 @@ static SPIRVTranspileContext *SDL_ShaderCross_INTERNAL_TranspileFromSPIRV(
                 return NULL;
             }
         }
+
+        // Ensure built-ins are populated before querying
+        spvc_compiler_update_active_builtins(compiler);
+
+        // Register built-in stage inputs so SPIRV-Cross emits correct MSL attributes.
+        // e.g. SV_RenderTargetArrayIndex (SpvBuiltInLayer) -> [[render_target_array_index]]
+        spvc_reflected_builtin_resource *builtin_inputs;
+        size_t num_builtin_inputs;
+        result = spvc_resources_get_builtin_resource_list_for_type(
+            resources,
+            SPVC_BUILTIN_RESOURCE_TYPE_STAGE_INPUT,
+            (const spvc_reflected_builtin_resource **)&builtin_inputs,
+            &num_builtin_inputs
+        );
+
+        if (result < 0) {
+            SPVC_ERROR(spvc_resources_get_builtin_resource_list_for_type);
+            spvc_context_destroy(context);
+            return NULL;
+        }
+
+        for (size_t i = 0; i < num_builtin_inputs; i += 1) {
+            spvc_msl_shader_interface_var_2 var;
+            spvc_msl_shader_interface_var_init_2(&var);
+            var.builtin = builtin_inputs[i].builtin;
+            result = spvc_compiler_msl_add_shader_input_2(compiler, &var);
+
+            if (result < 0) {
+                SPVC_ERROR(spvc_compiler_msl_add_shader_input_2);
+                spvc_context_destroy(context);
+                return NULL;
+            }
+        }
     }
 
     if (backend == SPVC_BACKEND_MSL && shaderStage == SDL_SHADERCROSS_SHADERSTAGE_COMPUTE) {
